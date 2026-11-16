@@ -1,0 +1,58 @@
+name: Build APK da zip
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Estrai lo zip
+        run: |
+          ZIP=$(ls -t *.zip | head -n 1)
+          echo "Uso: $ZIP"
+          mkdir -p build
+          unzip -q "$ZIP" -d build
+          APPDIR=$(dirname "$(find build -name capacitor.config.json -not -path '*/node_modules/*' | head -n 1)")
+          echo "APPDIR=$APPDIR" >> $GITHUB_ENV
+
+      - name: Installa dipendenze
+        working-directory: ${{ env.APPDIR }}
+        run: npm install
+
+      - name: Aggiungi piattaforma Android
+        working-directory: ${{ env.APPDIR }}
+        run: npx cap add android
+
+      - name: Forza orientamento verticale
+        working-directory: ${{ env.APPDIR }}
+        run: sed -i 's/<activity/<activity android:screenOrientation="portrait"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Sync
+        working-directory: ${{ env.APPDIR }}
+        run: npx cap sync android
+
+      - name: Compila APK debug
+        working-directory: ${{ env.APPDIR }}/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: feanor-debug-apk
+          path: ${{ env.APPDIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          
